@@ -1,0 +1,20 @@
+# Logs
+yarn-debug.log*
+yarn-error.log*
+.yarn
+
+
+node_modules
+dist
+.VSCodeCounter/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+# PCD File
+*.pcd
+
+public/*

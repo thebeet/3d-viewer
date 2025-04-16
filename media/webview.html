@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PCD Viewer</title>
+  <style>
+    html, body, #container {
+      width: 100vw;
+      height: 100vh;
+      margin: 0;
+      overflow: hidden;
+      background: #222;
+    }
+    #error {
+      color: #f66;
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 99;
+      background: rgba(0,0,0,0.85);
+      padding: 8px;
+      border-radius: 6px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="container"></div>
+  <div id="error"></div>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.154.0/build/three.module.js"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.154.0/build/three.module.js';
+    import { OrbitControls } from 'https://unpkg.com/three@0.154.0/examples/jsm/controls/OrbitControls.js';
+    import { PCDLoader } from 'https://unpkg.com/three@0.154.0/examples/jsm/loaders/PCDLoader.js';
+
+    // VSCode Webview API
+    const vscode = acquireVsCodeApi();
+
+    let camera, scene, renderer, controls;
+
+    let dirty = true;
+
+    function showError(msg) {
+      const err = document.getElementById('error');
+      err.style.display = 'block';
+      err.textContent = msg;
+    }
+
+    function init() {
+      const container = document.getElementById('container');
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 5000);
+      camera.position.z = 100;
+      camera.up.set(0, 0, 1);
+      camera.lookAt(0, 0, 0);
+      camera.updateProjectionMatrix();
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setClearColor(0x222222);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      container.appendChild(renderer.domElement);
+
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.addEventListener('change', () => {
+        dirty = true;
+      });
+      controls.minPolarAngle = 0;
+      controls.maxPolarAngle = Math.PI / 2;
+      controls.maxDistance = 2000;
+      controls.minDistance = 1;
+      controls.screenSpacePanning = false;
+      controls.zoomToCursor = true;
+      controls.update();
+
+      window.addEventListener('resize', onWindowResize, false);
+      animate();
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      dirty = true;
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      if (dirty) {
+        dirty = false;
+        renderer.render(scene, camera);
+      }
+    }
+
+    function loadPCD(buffer, fileName) {
+      scene.clear();
+      const loader = new PCDLoader();
+      const blob = new Blob([buffer]);
+      const url = URL.createObjectURL(blob);
+
+      loader.load(
+        url,
+        points => {
+          scene.add(points);
+          dirty = true;
+        },
+        undefined,
+        error => {
+          showError("PCD加载失败: " + error.message);
+        }
+      );
+    }
+
+    // 监听插件消息
+    window.addEventListener('message', async event => {
+      const message = event.data;
+      if (message.type === 'loadPCD') {
+        try {
+          const base64 = message.fileData;
+          const fileName = message.fileName;
+          // base64转ArrayBuffer
+          const binary = atob(base64);
+          const len = binary.length;
+          const arrayBuffer = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+            arrayBuffer[i] = binary.charCodeAt(i);
+          }
+          loadPCD(arrayBuffer.buffer, fileName);
+        } catch (e) {
+          showError('无法加载PCD文件: ' + e.message);
+        }
+      }
+    });
+
+    // 初始化
+    init();
+
+    // 通知插件Webview已准备好
+    vscode.postMessage({ type: 'ready' });
+  </script>
+</body>
+</html>
